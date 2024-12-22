@@ -4,10 +4,18 @@ from finsearch.retrieval.config import ColBERTConfig
 from finsearch.retrieval.model.colbert import ColBERTRetriever
 from finsearch.service import RetrievalService
 from finsearch.schema import SearchRequest, SearchResponse
+from fastapi.middleware.cors import CORSMiddleware
 from finsearch.util import load_document
 
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"], 
+)
 
 retrieval_service = RetrievalService(colbert_config=ColBERTConfig)
 
