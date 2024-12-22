@@ -31,7 +31,7 @@ def download_data(url, filename, dir_name: str = "index") -> None:
     os.chdir("..")
 
 def load_document():  
-    return pd.read_parquet("/experiment/data/document.parquet")
+    return pd.read_parquet("/app/experiment/data/document.parquet")
 
 def get_article_mapper(document_df: pd.DataFrame):
     article_to_title = {
