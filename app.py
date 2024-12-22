@@ -1,11 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from finsearch.retrieval.config import ColBERTConfig
-from finsearch.retrieval.model.colbert import ColBERTRetriever
 from finsearch.service import RetrievalService
-from finsearch.schema import SearchRequest, SearchResponse
+from finsearch.schema import SearchResponse
 from fastapi.middleware.cors import CORSMiddleware
-from finsearch.util import load_document
 
 
 app = FastAPI()
@@ -27,6 +25,6 @@ async def get_features():
     })
 
 @app.get("/query", response_model=SearchResponse)
-async def search(request: SearchRequest):
-    result = await retrieval_service.retrieve(request.method, request.query)
+async def search(query: str = Query(...), method: str = Query(...)):
+    result = await retrieval_service.retrieve(method=method, query=query)
     return SearchResponse(status=200, data=result)
