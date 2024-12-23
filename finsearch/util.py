@@ -2,6 +2,7 @@ import os
 import gdown
 import zipfile
 import logging
+import pandas as pd
 from typing import Any
 
 
@@ -10,11 +11,8 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-def check_dir(dir_name: str) -> bool:
-    return os.path.isdir(dir_name)
-
-def download_data(url, filename, dir_name: str = "experiments") -> None:
-    if not check_dir(dir_name):
+def download_data(url, filename, dir_name: str = "index") -> None:
+    if not os.path.isdir(dir_name):
         os.mkdir(dir_name)
     os.chdir(dir_name)
 
@@ -31,3 +29,15 @@ def download_data(url, filename, dir_name: str = "experiments") -> None:
     logging.info("Removed zip file after extraction.")
 
     os.chdir("..")
+
+def load_document():  
+    return pd.read_parquet("/app/experiment/data/document.parquet")
+
+def get_article_mapper(document_df: pd.DataFrame):
+    article_to_title = {
+            dct["Article"]: {
+                "title": dct["Article_title"], 
+                "docno": str(dct["docno"])
+            } for dct in document_df.to_dict(orient="records")
+        }
+    return article_to_title
