@@ -3,7 +3,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 from finsearch.api import HealthCheckResponse
+from dotenv import load_dotenv
 
+load_dotenv()
 
 app = FastAPI()
 
