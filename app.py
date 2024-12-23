@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
-from finsearch.api import HealthCheckResponse
 from dotenv import load_dotenv
 from finsearch.retrieval.config import ColBERTConfig
 from finsearch.service import RetrievalService
