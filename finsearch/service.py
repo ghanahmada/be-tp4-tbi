@@ -9,12 +9,12 @@ from finsearch.util import get_article_mapper, load_document, get_docno_mapper
 
 class RetrievalService:
     def __init__(self, colbert_config: ColBERTConfig, bm25_config: BM25Config):
-        # document_df = load_document()
         import pandas as pd
-        document_df = pd.read_parquet("experiment\data\document.parquet")
-        # self.article_to_title = get_article_mapper(document_df)
-        # self.collection = document_df["Article"].tolist()
-        # self.colbert_searcher = ColBERTRetriever(config=colbert_config, collection=self.collection)
+        # document_df = load_document()
+        document_df = pd.read_parquet("experiment/data/document.parquet")
+        self.article_to_title = get_article_mapper(document_df)
+        self.collection = document_df["Article"].tolist()
+        self.colbert_searcher = ColBERTRetriever(config=colbert_config, collection=self.collection)
         self.colbert_searcher = None
         
         self.docno_to_articles = get_docno_mapper(document_df)
@@ -24,7 +24,7 @@ class RetrievalService:
         self.bm25_tfidf_searcher = BM25RetrieverTFIDF(base=self.bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
         
         self.retriever_methods: Dict[str, Callable[[str, int], List[str]]] = {
-            # "ColBERT": self.colbert_searcher.retrieve,
+            "ColBERT": self.colbert_searcher.retrieve,
             "BM25": self.bm25_searcher.retrieve,  
             "BM25 with OpenAI": self.bm25_openai_searcher.retrieve,  
             "BM25 with TFIDF": self.bm25_tfidf_searcher.retrieve,  
