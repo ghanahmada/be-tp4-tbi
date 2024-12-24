@@ -551,7 +551,7 @@ class BM25Retriever():
         self.collection = collection
         self.bsbi_instance = BSBIIndex(data_dir='arxiv_collections',
                                         postings_encoding=VBEPostings,
-                                        output_dir='index')
+                                        output_dir='/app/index')
         self.bsbi_instance.load()
 
     async def retrieve(self, query: str, k: int = 1) -> List[str]:
@@ -687,5 +687,5 @@ if __name__ == "__main__":
 
     BSBI_instance = BSBIIndex(data_dir='arxiv_collections',
                               postings_encoding=VBEPostings,
-                              output_dir='index')
+                              output_dir='/app/index')
     BSBI_instance.do_indexing()  # memulai indexing!
