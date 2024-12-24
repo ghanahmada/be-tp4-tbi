@@ -1,3 +1,4 @@
+from collections import namedtuple
 from typing import List, Callable, Dict
 from fastapi import HTTPException
 from finsearch.retrieval.model.colbert import ColBERTRetriever
@@ -14,60 +15,36 @@ class RetrievalService:
         self.docno_to_articles = get_docno_mapper(document_df)
         self.collection = document_df["Article"].tolist()
         self.bm25_collection = document_df["docno"].tolist()
+        self.RetrievalConfig = namedtuple("RetrievalConfig", ["method", "mapper"])
 
-        self.colbert_searcher = ColBERTRetriever(config=colbert_config, collection=self.collection)
-        self.bm25_searcher = BM25Retriever(config=bm25_config, collection=self.bm25_collection)
-        self.bm25_openai_searcher = BM25RetrieverOpenAI(base=self.bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
-        self.bm25_tfidf_searcher = BM25RetrieverTFIDF(base=self.bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
-        
-        self.retriever_methods: Dict[str, Callable[[str, int], List[str]]] = {
-            "ColBERT": self.colbert_searcher.retrieve,
-            "BM25": self.bm25_searcher.retrieve,  
-            "BM25 with OpenAI": self.bm25_openai_searcher.retrieve,  
-            "BM25 with TFIDF": self.bm25_tfidf_searcher.retrieve,  
+        colbert_searcher = ColBERTRetriever(config=colbert_config, collection=document_df["Article"].tolist())
+        bm25_searcher = BM25Retriever(config=bm25_config, collection=document_df["docno"].tolist())
+        bm25_openai_searcher = BM25RetrieverOpenAI(base=bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
+        bm25_tfidf_searcher = BM25RetrieverTFIDF(base=bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
+
+        self.retriever_methods: Dict[str, self.RetrievalConfig] = {
+            "ColBERT": self.RetrievalConfig(method=colbert_searcher.retrieve, mapper=self.article_to_title),
+            "BM25": self.RetrievalConfig(method=bm25_searcher.retrieve, mapper=self.docno_to_articles),
+            "BM25 with OpenAI": self.RetrievalConfig(method=bm25_openai_searcher.retrieve, mapper=self.docno_to_articles),
+            "BM25 with TFIDF": self.RetrievalConfig(method=bm25_tfidf_searcher.retrieve, mapper=self.docno_to_articles),
         }
 
     def get_features(self) -> List[str]:
         return list(self.retriever_methods.keys())
 
     async def retrieve(self, method: str, query: str, k: int = 30) -> List[Document]:
-        retriever = self.retriever_methods.get(method)
-        if not retriever:
-            raise HTTPException(status_code=400, detail=f"Invalid retrieval method: {method}")
-        
-        if method == "ColBERT":
-            passage_list = await retriever(query, k)
-            return [
-                Document(title=self.article_to_title[doc]["title"], 
-                             desc=doc, 
-                             doc_id=self.article_to_title[doc]["docno"]) for doc in passage_list
-            ]
-        elif method == "BM25":
-            docno_list = await retriever(query, k)
-            return [
-                Document(title=self.docno_to_articles[docno]["title"], 
-                             desc=self.docno_to_articles[docno]["desc"], 
-                             doc_id=docno) for docno in docno_list
-            ]
-        elif method == "BM25 with OpenAI":
-            docno_list = await retriever(query, k)
-            return [
-                Document(title=self.docno_to_articles[docno]["title"], 
-                             desc=self.docno_to_articles[docno]["desc"], 
-                             doc_id=docno) for docno in docno_list
-            ]
-        elif method == "BM25 with TFIDF":
-            docno_list = await retriever(query, k)
-            return [
-                Document(title=self.docno_to_articles[docno]["title"], 
-                             desc=self.docno_to_articles[docno]["desc"], 
-                             doc_id=docno) for docno in docno_list
-            ]
-        else:
+        retrieval_config = self.retriever_methods.get(method)
+        if not retrieval_config:
             raise HTTPException(status_code=400, detail=f"Invalid retrieval method: {method}")
 
-    async def _bm25_retriever(self, query: str, k: int) -> List[str]:
-        raise NotImplementedError("BM25 retriever not implemented yet.")
+        result_list = await retrieval_config.method(query, k)
+        mapper = retrieval_config.mapper
 
-    async def _bm25_openai_retriever(self, query: str, k: int) -> List[str]:
-        raise NotImplementedError("BM25 + OpenAI retriever not implemented yet.")
+        return [
+            Document(
+                title=mapper[result]["title"],
+                desc=mapper[result].get("desc", result),  
+                doc_id=mapper[result]["docno"]
+            )
+            for result in result_list
+        ]

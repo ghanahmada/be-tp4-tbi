@@ -619,7 +619,7 @@ class BM25RetrieverOpenAI():
 
         
         clf = xgb.XGBClassifier() 
-        clf.load_model('/app/finsearch/retrieval/model/model_openai.json')
+        clf.load_model('/app/finsearch/retrieval/model/constant/model_openai.json')
 
         q_probs = clf.predict_proba(q_features)[:, 1]
 
@@ -668,7 +668,7 @@ class BM25RetrieverTFIDF():
 
         
         clf = xgb.XGBClassifier() 
-        clf.load_model('/app/finsearch/retrieval/model/model_tfidf.json')
+        clf.load_model('/app/finsearch/retrieval/model/constant/model_tfidf.json')
 
         q_probs = clf.predict_proba(q_features)[:, 1]
 
