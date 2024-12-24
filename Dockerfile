@@ -28,11 +28,11 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1 
     && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 20 \
     && python3 -m pip install --upgrade pip
 
-COPY requirements.txt /app/
+COPY requirements.txt .
 RUN pip3 install --default-timeout=500 torch==2.3.0+cu121 -f https://download.pytorch.org/whl/cu121/torch_stable.html
 RUN pip3 install -r requirements.txt
 
-COPY . /app
+COPY . .
 
 EXPOSE 8080
 
