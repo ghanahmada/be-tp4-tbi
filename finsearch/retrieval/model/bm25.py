@@ -9,7 +9,7 @@ from openai import BadRequestError, OpenAI
 from torch import cosine_similarity
 from finsearch.retrieval.interface import IRetrieval
 from finsearch.retrieval.config import BM25Config
-from finsearch.util import download_data_bm25, download_data_openai_embedder
+from finsearch.util import download_data
 
 import os
 import pickle
@@ -544,8 +544,8 @@ class BM25Retriever():
     def __init__(self, config: BM25Config, collection: List[str]):
         self.config = config
         # ngambil param BSBIIndex
-        arxiv_collections = download_data_bm25(url=self.config.arxiv_collections_url, filename=self.config.arxiv_collections_folder, dir_name=self.config.arxiv_collections_folder)
-        index = download_data_bm25(url=self.config.index_url, filename=self.config.index_folder, dir_name=self.config.index_folder)
+        arxiv_collections = download_data(url=self.config.arxiv_collections_url, filename=self.config.arxiv_collections_folder, dir_name=self.config.arxiv_collections_folder)
+        index = download_data(url=self.config.index_url, filename=self.config.index_folder, dir_name=self.config.index_folder)
         self.collection = collection
         self.bsbi_instance = BSBIIndex(data_dir='arxiv_collections',
                                         postings_encoding=VBEPostings,
@@ -562,8 +562,8 @@ class BM25RetrieverOpenAI():
         self.base = base
         self.mapper = mapper
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        download_data_openai_embedder(url=self.config.embed_url, filename=self.config.embed_filename, dir_name=self.config.embed_folder)
-        with open("experiment\data\document_embedded.json", "r") as file:
+        download_data(url=self.config.embed_url, filename=self.config.embed_filename)
+        with open("/app/index/document_embedded.json", "r") as file:
             doc_embed_map = json.load(file)
         self.doc_vectorizer = doc_embed_map
 
@@ -573,18 +573,16 @@ class BM25RetrieverOpenAI():
         return bm25_results
 
     def truncate_text(self, text, max_tokens):
-        # Pilih encoding yang sesuai dengan model Anda
         encoding = tiktoken.get_encoding("cl100k_base")
         tokens = encoding.encode(text)
         if len(tokens) > max_tokens:
-            # Potong teks jika jumlah token melebihi batas
             truncated_text = encoding.decode(tokens[:max_tokens])
             return truncated_text
         return text
 
     def get_openai_embedding(self, text):
         text = text.replace("\n", " ")
-        truncated_text = self.truncate_text(text, 8100)  # Batasi hingga 32000 token
+        truncated_text = self.truncate_text(text, 8100) 
         try:
             response = self.client.embeddings.create(
                 input=truncated_text,
@@ -593,7 +591,7 @@ class BM25RetrieverOpenAI():
         except BadRequestError as e:
             print(f"Error: {e}, retrying with smaller input.")
             truncated_text = self.truncate_text(text, 7500
-            )  # Coba dengan batas lebih kecil
+            )  
             response = self.client.embeddings.create(
                 input=truncated_text,
                 model="text-embedding-3-small"
@@ -621,19 +619,14 @@ class BM25RetrieverOpenAI():
 
         
         clf = xgb.XGBClassifier() 
-        clf.load_model('finsearch/retrieval/model/model_openai.json')
+        clf.load_model('/app/finsearch/retrieval/model/model_openai.json')
 
         q_probs = clf.predict_proba(q_features)[:, 1]
 
-        # Gabungkan hasil dokumen dengan probabilitas
         combined = list(zip(doc_ids, q_probs))
-
-        # Sort berdasarkan probabilitas prediksi (descending)
         combined_sorted = sorted(combined, key=lambda x: x[1], reverse=True)
 
-        # Ambil doc_ids saja dari hasil yang diurutkan
         ranked_doc_ids = [doc_id for doc_id, _ in combined_sorted]
-
         return ranked_doc_ids
     
 class BM25RetrieverTFIDF():
@@ -675,19 +668,14 @@ class BM25RetrieverTFIDF():
 
         
         clf = xgb.XGBClassifier() 
-        clf.load_model('finsearch/retrieval/model/model_tfidf.json')
+        clf.load_model('/app/finsearch/retrieval/model/model_tfidf.json')
 
         q_probs = clf.predict_proba(q_features)[:, 1]
 
-        # Gabungkan hasil dokumen dengan probabilitas
         combined = list(zip(doc_ids, q_probs))
-
-        # Sort berdasarkan probabilitas prediksi (descending)
         combined_sorted = sorted(combined, key=lambda x: x[1], reverse=True)
 
-        # Ambil doc_ids saja dari hasil yang diurutkan
         ranked_doc_ids = [doc_id for doc_id, _ in combined_sorted]
-
         return ranked_doc_ids
 
 
