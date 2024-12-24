@@ -31,22 +31,25 @@ def download_data(url, filename, dir_name: str = "index") -> None:
     os.chdir("..")
 
 def download_data_bm25(url, filename, dir_name: str = "index") -> None:
+    # Pastikan direktori target ada
     if not os.path.isdir(dir_name):
         os.mkdir(dir_name)
 
+    if os.path.isdir(dir_name) and os.listdir(dir_name):
+        logging.info(f"Directory '{dir_name}' already exists and is not empty. Skipping download.")
+        return
+
     logging.info("Downloading data....")
     gdown.download(url, quiet=False)
-    logging.info(f"Downloading to: {os.getcwd()}")
+    logging.info(f"Downloaded to: {os.getcwd()}")
 
     logging.info("Extracting zip file....")
     with zipfile.ZipFile(f"{filename}.zip", 'r') as zip_ref:
-        zip_ref.extractall()
-    logging.info(f"Extracted files to: {filename}")
+        zip_ref.extractall(dir_name)  # Ekstrak langsung ke dir_name
+    logging.info(f"Extracted files to: {dir_name}")
 
     os.remove(f"{filename}.zip")
     logging.info("Removed zip file after extraction.")
-
-    os.chdir("..")
 
 def load_document():  
     # return pd.read_parquet("/app/experiment/data/document.parquet")
