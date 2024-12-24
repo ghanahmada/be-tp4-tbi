@@ -30,7 +30,9 @@ from compression import VBEPostings
 from trie import Trie
 from tqdm import tqdm
 
+import nltk
 from nltk.corpus import stopwords
+nltk.download('stopwords')
 
 class BSBIIndex:
     """
