@@ -15,7 +15,6 @@ class RetrievalService:
         self.article_to_title = get_article_mapper(document_df)
         self.collection = document_df["Article"].tolist()
         self.colbert_searcher = ColBERTRetriever(config=colbert_config, collection=self.collection)
-        self.colbert_searcher = None
         
         self.docno_to_articles = get_docno_mapper(document_df)
         self.bm25_collection = document_df["docno"].tolist()
