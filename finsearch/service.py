@@ -43,7 +43,7 @@ class RetrievalService:
         return [
             Document(
                 title=mapper[result]["title"],
-                desc=mapper[result].get("desc", result),  
+                desc=mapper[result]["desc"],
                 doc_id=mapper[result]["docno"]
             )
             for result in result_list

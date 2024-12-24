@@ -38,22 +38,22 @@ def download_data(url, filename, dir_name: str = "index") -> None:
         logging.info("No ZIP extension detected. Skipping extraction.")
 
 def load_document():  
-    return pd.read_parquet("/app/experiment/data/document.parquet")
+    return pd.read_parquet("app/experiment/data/document.parquet")
 
 def get_article_mapper(document_df: pd.DataFrame):
     article_to_title = {
             dct["Article"]: {
                 "title": dct["Article_title"], 
+                "desc": dct['Article'],
                 "docno": str(dct["docno"])
             } for dct in document_df.to_dict(orient="records")
         }
     return article_to_title
 
 def get_docno_mapper(document_df: pd.DataFrame):
-    import pandas as pd
     dict_docs = {str(dct['docno']): {
-                    "title":dct['Article_title'],
-                    "desc":dct['Article'],
-                    "doc_id":dct["docno"]
+                    "title": dct['Article_title'],
+                    "desc": dct['Article'],
+                    "docno": str(dct["docno"])
                 } for dct in document_df.to_dict(orient='records')}
     return dict_docs

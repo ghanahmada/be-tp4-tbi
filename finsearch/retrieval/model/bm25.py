@@ -1,15 +1,8 @@
-# FILE: finsearch/retrieval/model/bm25.py
-
 import json
 from typing import List
 
 import numpy as np
-import torch
 from openai import BadRequestError, OpenAI
-from torch import cosine_similarity
-from finsearch.retrieval.interface import IRetrieval
-from finsearch.retrieval.config import BM25Config
-from finsearch.util import download_data
 
 import os
 import pickle
@@ -19,19 +12,19 @@ import math
 import re
 from porter2stemmer import Porter2Stemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
-import requests
-import string
 import tiktoken
 import xgboost as xgb
-
-from index import InvertedIndexReader, InvertedIndexWriter
-from util import IdMap, merge_and_sort_posts_and_tfs
-from compression import VBEPostings
-from trie import Trie
 from tqdm import tqdm
 
 import nltk
 from nltk.corpus import stopwords
+
+from compression import VBEPostings
+from finsearch.retrieval.config import BM25Config
+from finsearch.util import download_data
+from index import InvertedIndexReader, InvertedIndexWriter
+from trie import Trie
+from util import IdMap, merge_and_sort_posts_and_tfs
 nltk.download('stopwords')
 
 class BSBIIndex:
@@ -82,7 +75,7 @@ class BSBIIndex:
 
         if not os.path.exists(terms_dict_path):
             raise FileNotFoundError(f"File not found: {terms_dict_path}")
-        
+
         with open(os.path.join(self.output_dir, 'terms.dict'), 'rb') as f:
             self.term_id_map = pickle.load(f)
         with open(os.path.join(self.output_dir, 'docs.dict'), 'rb') as f:
@@ -137,18 +130,18 @@ class BSBIIndex:
 
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                
+
                 terms = re.findall(r'\b\w+\b', content.lower())
                 for raw_term in terms:
                     if raw_term in self.stop_words:
                         continue
-                    
+
                     processed_term = self.stemmer.stem(raw_term)
                     term_id = self.term_id_map[processed_term]
                     td_pairs.append((term_id, doc_id))
-                    
+
                     term_freq[raw_term] = term_freq.get(raw_term, 0) + 1
-    
+
         for raw_term, freq in term_freq.items():
             self.trie.insert(raw_term, freq)
 
@@ -158,7 +151,7 @@ class BSBIIndex:
     def write_to_index(self, td_pairs, index):
         """
         Melakukan inversion td_pairs (list of <termID, docID> pairs) dan
-        menyimpan mereka ke index. Disini diterapkan konsep BSBI dimana 
+        menyimpan mereka ke index. Disini diterapkan konsep BSBI dimana
         hanya di-maintain satu dictionary besar untuk keseluruhan block.
         Namun dalam teknik penyimpanannya digunakan strategi dari SPIMI
         yaitu penggunaan struktur data hashtable (dalam Python bisa
@@ -185,12 +178,12 @@ class BSBIIndex:
                 term_dict[term_id] = dict()
             # Mengupdate juga TF (yang merupakan value dari dictionary yang di dalam)
             term_dict[term_id][doc_id] = term_dict[term_id].get(doc_id, 0) + 1
-        
+
         for term_id in sorted(term_dict.keys()):
             # Sort postings list (dan tf list yang bersesuaian)
             sorted_postings_tf = dict(sorted(term_dict[term_id].items()))
             # Postings list adalah keys, TF list adalah values
-            index.append(term_id, list(sorted_postings_tf.keys()), 
+            index.append(term_id, list(sorted_postings_tf.keys()),
                          list(sorted_postings_tf.values()))
 
     def merge_index(self, indices, merged_index):
@@ -249,7 +242,7 @@ class BSBIIndex:
             Document frequency.
 
         N: int
-            Jumlah dokumen di corpus. 
+            Jumlah dokumen di corpus.
 
         Returns
         -------
@@ -260,7 +253,7 @@ class BSBIIndex:
         wtd = (1 + math.log10(tf)) if tf > 0 else 0
         idf = math.log(N/df)
         return wtd * idf
-    
+
     def _compute_score_bm25(self, tf, df, N, k1, b, dl, avdl):
         """
         Fungsi ini melakukan komputasi skor BM25.
@@ -276,7 +269,7 @@ class BSBIIndex:
         idf = math.log(N/df)
         adjusted_tf = ((k1 + 1) * tf) / (k1 * ((1 - b) + b * (dl / avdl)) + tf)
         return idf * adjusted_tf
-    
+
     def _preprocess_query(self, query):
         tokenized_query = re.findall(r'\b\w+\b', query.lower())
         tokenized_query = [self.stemmer.stem(term).lower() for term in tokenized_query if term not in self.stop_words]
@@ -291,7 +284,7 @@ class BSBIIndex:
         dokumen yang di-point oleh pointer pada waktu tertentu dapat dilakukan
         secara sekuensial, i.e., seperti menggunakan for loop.
 
-        Beberapa informasi penting: 
+        Beberapa informasi penting:
             1. informasi DF(t) ada di dictionary postings_dict pada merged index
             2. informasi TF(t, D) ada di tf_list
             3. informasi N bisa didapat dari doc_length pada merged index, len(doc_length)
@@ -318,8 +311,8 @@ class BSBIIndex:
         doc_scores = {}  # Dictionary to store document scores
         query_terms = self._preprocess_query(query)
 
-        with InvertedIndexReader(self.index_name, 
-                                self.postings_encoding, 
+        with InvertedIndexReader(self.index_name,
+                                self.postings_encoding,
                                 directory=self.output_dir) as index:
             N = len(index.doc_length)  # Total number of documents
             postings_dict = index.postings_dict
@@ -365,7 +358,7 @@ class BSBIIndex:
                     if pointer < len(postings_list) and postings_list[pointer] == current_doc_id:
                         tf = tf_list[pointer]
                         score += self._compute_score_tfidf(tf, df, N)
-                        pointers[i] += 1  
+                        pointers[i] += 1
                 if score > 0:
                     doc_scores[current_doc_id] = score
 
@@ -377,7 +370,7 @@ class BSBIIndex:
         Lakukan retrieval TF-IDF dengan skema TaaT.
         Method akan mengembalikan top-K retrieval results.
 
-        Beberapa informasi penting: 
+        Beberapa informasi penting:
             1. informasi DF(t) ada di dictionary postings_dict pada merged index
             2. informasi TF(t, D) ada di tf_list
             3. informasi N bisa didapat dari doc_length pada merged index, len(doc_length)
@@ -404,8 +397,8 @@ class BSBIIndex:
         doc_to_sim = {}
         query_terms = self._preprocess_query(query)
 
-        with InvertedIndexReader(self.index_name, 
-                                 self.postings_encoding, 
+        with InvertedIndexReader(self.index_name,
+                                 self.postings_encoding,
                                  directory=self.output_dir) as index:
             N = len(index.doc_length)
             postings_dict = index.postings_dict
@@ -413,7 +406,7 @@ class BSBIIndex:
                 if term not in self.term_id_map:
                     continue
                 term_id = self.term_id_map[term]
-    
+
                 df = postings_dict[term_id][1]
                 postings_and_tf = index.get_postings_list(term_id)
 
@@ -449,8 +442,8 @@ class BSBIIndex:
         doc_to_sim = {}
         query_terms = self._preprocess_query(query)
 
-        with InvertedIndexReader(self.index_name, 
-                                 self.postings_encoding, 
+        with InvertedIndexReader(self.index_name,
+                                 self.postings_encoding,
                                  directory=self.output_dir) as index:
             N = len(index.doc_length)
             postings_dict = index.postings_dict
@@ -459,18 +452,18 @@ class BSBIIndex:
                 if term not in self.term_id_map:
                     continue
                 term_id = self.term_id_map[term]
-    
+
                 df = postings_dict[term_id][1]
                 postings_and_tf = index.get_postings_list(term_id)
 
                 for doc_id, tf in zip(postings_and_tf[0], postings_and_tf[1]):
                     dl = index.doc_length[doc_id]
                     score = self._compute_score_bm25(tf, df, N, k1, b, dl, avdl)
-                    
+
                     doc_to_sim[doc_id] = doc_to_sim.get(doc_id, 0) + score
-        
+
         retrieved_docs = self.get_top_k_by_score(doc_to_sim, k)
-        
+
         return retrieved_docs
 
 
@@ -533,7 +526,7 @@ class BSBIIndex:
 
         return result
 
-    
+
     def get_query_recommendations(self, query, k=5):
         # Method untuk mendapatkan rekomendasi untuk QAC
         # Tidak perlu mengubah ini
@@ -546,12 +539,12 @@ class BM25Retriever():
     def __init__(self, config: BM25Config, collection: List[str]):
         self.config = config
         # ngambil param BSBIIndex
-        arxiv_collections = download_data(url=self.config.arxiv_collections_url, filename=self.config.arxiv_collections_folder, dir_name=self.config.arxiv_collections_folder)
-        index = download_data(url=self.config.index_url, filename=self.config.index_folder, dir_name=self.config.index_folder)
+        arxiv_collections = download_data(url=self.config.arxiv_collections_url, filename=self.config.arxiv_collections_folder)
+        index = download_data(url=self.config.index_url, filename=self.config.index_folder)
         self.collection = collection
-        self.bsbi_instance = BSBIIndex(data_dir='arxiv_collections',
+        self.bsbi_instance = BSBIIndex(data_dir=self.config.data_dir,
                                         postings_encoding=VBEPostings,
-                                        output_dir='/app/index')
+                                        output_dir=self.config.output_dir)
         self.bsbi_instance.load()
 
     async def retrieve(self, query: str, k: int = 1) -> List[str]:
@@ -565,7 +558,7 @@ class BM25RetrieverOpenAI():
         self.mapper = mapper
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         download_data(url=self.config.embed_url, filename=self.config.embed_filename)
-        with open("/app/index/document_embedded.json", "r") as file:
+        with open(self.config.embed_openai_path, "r") as file:
             doc_embed_map = json.load(file)
         self.doc_vectorizer = doc_embed_map
 
@@ -584,7 +577,7 @@ class BM25RetrieverOpenAI():
 
     def get_openai_embedding(self, text):
         text = text.replace("\n", " ")
-        truncated_text = self.truncate_text(text, 8100) 
+        truncated_text = self.truncate_text(text, 8100)
         try:
             response = self.client.embeddings.create(
                 input=truncated_text,
@@ -593,7 +586,7 @@ class BM25RetrieverOpenAI():
         except BadRequestError as e:
             print(f"Error: {e}, retrying with smaller input.")
             truncated_text = self.truncate_text(text, 7500
-            )  
+            )
             response = self.client.embeddings.create(
                 input=truncated_text,
                 model="text-embedding-3-small"
@@ -619,9 +612,9 @@ class BM25RetrieverOpenAI():
             cos_sims
         ])
 
-        
-        clf = xgb.XGBClassifier() 
-        clf.load_model('/app/finsearch/retrieval/model/constant/model_openai.json')
+
+        clf = xgb.XGBClassifier()
+        clf.load_model(self.config.openai_model)
 
         q_probs = clf.predict_proba(q_features)[:, 1]
 
@@ -630,7 +623,7 @@ class BM25RetrieverOpenAI():
 
         ranked_doc_ids = [doc_id for doc_id, _ in combined_sorted]
         return ranked_doc_ids
-    
+
 class BM25RetrieverTFIDF():
     def __init__(self, base:BM25Retriever, config:BM25Config, mapper: dict):
         self.config = config
@@ -668,9 +661,9 @@ class BM25RetrieverTFIDF():
             cos_sims
         ])
 
-        
-        clf = xgb.XGBClassifier() 
-        clf.load_model('/app/finsearch/retrieval/model/constant/model_tfidf.json')
+
+        clf = xgb.XGBClassifier()
+        clf.load_model(self.config.tfidf_model)
 
         q_probs = clf.predict_proba(q_features)[:, 1]
 
@@ -679,13 +672,3 @@ class BM25RetrieverTFIDF():
 
         ranked_doc_ids = [doc_id for doc_id, _ in combined_sorted]
         return ranked_doc_ids
-
-
-
-
-if __name__ == "__main__":
-
-    BSBI_instance = BSBIIndex(data_dir='arxiv_collections',
-                              postings_encoding=VBEPostings,
-                              output_dir='/app/index')
-    BSBI_instance.do_indexing()  # memulai indexing!
