@@ -2,7 +2,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
 from dotenv import load_dotenv
-from finsearch.retrieval.config import ColBERTConfig
+from finsearch.retrieval.config import ColBERTConfig, BM25Config
 from finsearch.service import RetrievalService
 from finsearch.schema import SearchResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +18,7 @@ app.add_middleware(
     allow_headers=["*"], 
 )
 
-retrieval_service = RetrievalService(colbert_config=ColBERTConfig)
+retrieval_service = RetrievalService(colbert_config=ColBERTConfig, bm25_config=BM25Config)
 
 @app.get("/features")
 async def get_features():
