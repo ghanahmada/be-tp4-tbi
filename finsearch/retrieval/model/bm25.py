@@ -655,9 +655,12 @@ class BM25RetrieverTFIDF():
         embedded_docs = self.tfidf_vectorizer.transform(doc_texts)
         embedded_query = self.tfidf_vectorizer.transform([query])
 
-        dot_products = np.dot(embedded_docs, embedded_query.T)  # A·B
-        doc_norms = np.linalg.norm(embedded_docs, axis=1, keepdims=True)  # ||A||
-        query_norm = np.linalg.norm(embedded_query)  # ||B||
+        embedded_docs_dense = embedded_docs.toarray()
+        embedded_query_dense = embedded_query.toarray()
+
+        dot_products = np.dot(embedded_docs_dense, embedded_query_dense.T)  # A·B
+        doc_norms = np.linalg.norm(embedded_docs_dense, axis=1, keepdims=True)  # ||A||
+        query_norm = np.linalg.norm(embedded_query_dense)  # ||B||
 
         cos_sims = (dot_products / (doc_norms * query_norm)).flatten()
 
