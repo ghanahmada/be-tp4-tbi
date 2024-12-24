@@ -51,6 +51,22 @@ def download_data_bm25(url, filename, dir_name: str = "index") -> None:
     os.remove(f"{filename}.zip")
     logging.info("Removed zip file after extraction.")
 
+def download_data_openai_embedder(url, filename, dir_name) -> None:
+    # Pastikan direktori target ada
+    if not os.path.isdir(dir_name):
+        os.mkdir(dir_name)
+
+    output_path = os.path.join(dir_name, filename)
+    
+    # Cek apakah file sudah ada
+    if os.path.isfile(output_path):
+        logging.info(f"File '{output_path}' already exists. Skipping download.")
+        return
+
+    logging.info("Downloading data....")
+    gdown.download(url, output=output_path, quiet=False)
+    logging.info(f"Downloaded to: {output_path}")
+
 def load_document():  
     # return pd.read_parquet("/app/experiment/data/document.parquet")
     return pd.read_parquet("experiment/data/document.parquet")

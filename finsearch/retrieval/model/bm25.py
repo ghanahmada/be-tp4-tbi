@@ -1,5 +1,6 @@
 # FILE: finsearch/retrieval/model/bm25.py
 
+import json
 from typing import List
 
 import numpy as np
@@ -8,7 +9,7 @@ from openai import BadRequestError, OpenAI
 from torch import cosine_similarity
 from finsearch.retrieval.interface import IRetrieval
 from finsearch.retrieval.config import BM25Config
-from finsearch.util import download_data_bm25
+from finsearch.util import download_data_bm25, download_data_openai_embedder
 
 import os
 import pickle
@@ -561,6 +562,10 @@ class BM25RetrieverOpenAI():
         self.base = base
         self.mapper = mapper
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        download_data_openai_embedder(url=self.config.embed_url, filename=self.config.embed_filename, dir_name=self.config.embed_folder)
+        with open("experiment\data\document_embedded.json", "r") as file:
+            doc_embed_map = json.load(file)
+        self.doc_vectorizer = doc_embed_map
 
     async def retrieve(self, query: str, k: int = 1) -> List[str]:
         bm25_results = self.base.bsbi_instance.retrieve_bm25_taat(query, k=k)
@@ -599,9 +604,8 @@ class BM25RetrieverOpenAI():
         doc_ids = [i[-1].replace(".txt","").split("/")[-1] for i in bm25_results]
         doc_scores = [int(i[0]) for i in bm25_results]
 
-        doc_texts = [self.mapper[doc_id]['desc'] for doc_id in doc_ids]
-
-        embedded_docs = np.array([self.get_openai_embedding(text) for text in doc_texts])
+        # doc_texts = [self.mapper[doc_id]['desc'] for doc_id in doc_ids]
+        embedded_docs = np.array([self.doc_vectorizer[str(doc_id)] for doc_id in doc_ids])
         embedded_query = np.array(self.get_openai_embedding(query)).reshape(1, -1)
 
         dot_products = np.dot(embedded_docs, embedded_query.T)  # A·B

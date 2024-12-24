@@ -15,3 +15,6 @@ class BM25Config:
     arxiv_collections_folder: str = "arxiv_collections"
     index_url: str = "https://drive.google.com/uc?&id=1WHVMtvlLvPL9bGMCq6l-XxGjFA6Zzzyp"
     index_folder: str = "index"
+    embed_url: str = "https://drive.google.com/uc?&id=1Dbrbs1bHfbcVh9PRtxmJPQDDg9ypZTQw"
+    embed_filename: str = "document_embedded.json"
+    embed_folder: str = "experiment/data"
