@@ -1,6 +1,11 @@
 # FILE: finsearch/retrieval/model/bm25.py
 
 from typing import List
+
+import numpy as np
+import torch
+from openai import BadRequestError, OpenAI
+from torch import cosine_similarity
 from finsearch.retrieval.interface import IRetrieval
 from finsearch.retrieval.config import BM25Config
 from finsearch.util import download_data_bm25
@@ -12,8 +17,11 @@ import heapq
 import math
 import re
 from porter2stemmer import Porter2Stemmer
+from sklearn.feature_extraction.text import TfidfVectorizer
 import requests
 import string
+import tiktoken
+import xgboost as xgb
 
 from index import InvertedIndexReader, InvertedIndexWriter
 from util import IdMap, merge_and_sort_posts_and_tfs
@@ -535,8 +543,8 @@ class BM25Retriever():
     def __init__(self, config: BM25Config, collection: List[str]):
         self.config = config
         # ngambil param BSBIIndex
-        # arxiv_collections = download_data_bm25(url=self.config.arxiv_collections_url, filename=self.config.arxiv_collections_folder, dir_name=self.config.arxiv_collections_folder)
-        # index = download_data_bm25(url=self.config.index_url, filename=self.config.index_folder, dir_name=self.config.index_folder)
+        arxiv_collections = download_data_bm25(url=self.config.arxiv_collections_url, filename=self.config.arxiv_collections_folder, dir_name=self.config.arxiv_collections_folder)
+        index = download_data_bm25(url=self.config.index_url, filename=self.config.index_folder, dir_name=self.config.index_folder)
         self.collection = collection
         self.bsbi_instance = BSBIIndex(data_dir='arxiv_collections',
                                         postings_encoding=VBEPostings,
@@ -544,8 +552,142 @@ class BM25Retriever():
         self.bsbi_instance.load()
 
     async def retrieve(self, query: str, k: int = 1) -> List[str]:
-        bm25_results = [i[-1].replace(".txt","").split("/")[-1] for i in self.bsbi_instance.retrieve_bm25_taat(query, k=10)]
+        bm25_results = [i[-1].replace(".txt","").split("/")[-1] for i in self.bsbi_instance.retrieve_bm25_taat(query, k=30)]
         return bm25_results
+
+class BM25RetrieverOpenAI():
+    def __init__(self, base:BM25Retriever, config:BM25Config, mapper: dict):
+        self.config = config
+        self.base = base
+        self.mapper = mapper
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    async def retrieve(self, query: str, k: int = 1) -> List[str]:
+        bm25_results = self.base.bsbi_instance.retrieve_bm25_taat(query, k=k)
+        bm25_results = self.rerank(query, bm25_results)
+        return bm25_results
+
+    def truncate_text(self, text, max_tokens):
+        # Pilih encoding yang sesuai dengan model Anda
+        encoding = tiktoken.get_encoding("cl100k_base")
+        tokens = encoding.encode(text)
+        if len(tokens) > max_tokens:
+            # Potong teks jika jumlah token melebihi batas
+            truncated_text = encoding.decode(tokens[:max_tokens])
+            return truncated_text
+        return text
+
+    def get_openai_embedding(self, text):
+        text = text.replace("\n", " ")
+        truncated_text = self.truncate_text(text, 8100)  # Batasi hingga 32000 token
+        try:
+            response = self.client.embeddings.create(
+                input=truncated_text,
+                model="text-embedding-3-small"
+            )
+        except BadRequestError as e:
+            print(f"Error: {e}, retrying with smaller input.")
+            truncated_text = self.truncate_text(text, 7500
+            )  # Coba dengan batas lebih kecil
+            response = self.client.embeddings.create(
+                input=truncated_text,
+                model="text-embedding-3-small"
+            )
+        return response.data[0].embedding
+
+    def rerank(self, query, bm25_results):
+        doc_ids = [i[-1].replace(".txt","").split("/")[-1] for i in bm25_results]
+        doc_scores = [int(i[0]) for i in bm25_results]
+
+        doc_texts = [self.mapper[doc_id]['desc'] for doc_id in doc_ids]
+
+        embedded_docs = np.array([self.get_openai_embedding(text) for text in doc_texts])
+        embedded_query = np.array(self.get_openai_embedding(query)).reshape(1, -1)
+
+        dot_products = np.dot(embedded_docs, embedded_query.T)  # A·B
+        doc_norms = np.linalg.norm(embedded_docs, axis=1, keepdims=True)  # ||A||
+        query_norm = np.linalg.norm(embedded_query)  # ||B||
+
+        cos_sims = (dot_products / (doc_norms * query_norm)).flatten()
+
+        q_features = np.column_stack([
+            doc_scores,  # BM25 scores
+            cos_sims
+        ])
+
+        
+        clf = xgb.XGBClassifier() 
+        clf.load_model('finsearch/retrieval/model/model_openai.json')
+
+        q_probs = clf.predict_proba(q_features)[:, 1]
+
+        # Gabungkan hasil dokumen dengan probabilitas
+        combined = list(zip(doc_ids, q_probs))
+
+        # Sort berdasarkan probabilitas prediksi (descending)
+        combined_sorted = sorted(combined, key=lambda x: x[1], reverse=True)
+
+        # Ambil doc_ids saja dari hasil yang diurutkan
+        ranked_doc_ids = [doc_id for doc_id, _ in combined_sorted]
+
+        return ranked_doc_ids
+    
+class BM25RetrieverTFIDF():
+    def __init__(self, base:BM25Retriever, config:BM25Config, mapper: dict):
+        self.config = config
+        self.base = base
+        self.mapper = mapper
+        self.tfidf_vectorizer = TfidfVectorizer()
+
+    async def retrieve(self, query: str, k: int = 1) -> List[str]:
+        bm25_results = self.base.bsbi_instance.retrieve_bm25_taat(query, k=k)
+        bm25_results = self.rerank(query, bm25_results)
+        return bm25_results
+
+
+    def rerank(self, query, bm25_results):
+        doc_ids = [i[-1].replace(".txt","").split("/")[-1] for i in bm25_results]
+        doc_scores = [int(i[0]) for i in bm25_results]
+
+        doc_texts = [self.mapper[doc_id]['desc'] for doc_id in doc_ids]
+
+        self.tfidf_vectorizer.fit(doc_texts + [query])
+        embedded_docs = self.tfidf_vectorizer.transform(doc_texts)
+        embedded_query = self.tfidf_vectorizer.transform([query])
+
+        embedded_docs_dense = embedded_docs.toarray()
+        embedded_query_dense = embedded_query.toarray()
+
+        dot_products = np.dot(embedded_docs_dense, embedded_query_dense.T)  # A·B
+        doc_norms = np.linalg.norm(embedded_docs_dense, axis=1, keepdims=True)  # ||A||
+        query_norm = np.linalg.norm(embedded_query_dense)  # ||B||
+
+        cos_sims = (dot_products / (doc_norms * query_norm)).flatten()
+
+        q_features = np.column_stack([
+            doc_scores,  # BM25 scores
+            cos_sims
+        ])
+
+        
+        clf = xgb.XGBClassifier() 
+        clf.load_model('finsearch/retrieval/model/model_tfidf.json')
+
+        q_probs = clf.predict_proba(q_features)[:, 1]
+
+        # Gabungkan hasil dokumen dengan probabilitas
+        combined = list(zip(doc_ids, q_probs))
+
+        # Sort berdasarkan probabilitas prediksi (descending)
+        combined_sorted = sorted(combined, key=lambda x: x[1], reverse=True)
+
+        # Ambil doc_ids saja dari hasil yang diurutkan
+        ranked_doc_ids = [doc_id for doc_id, _ in combined_sorted]
+
+        return ranked_doc_ids
+
+
+
 
 if __name__ == "__main__":
 
