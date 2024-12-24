@@ -1,22 +1,32 @@
 from typing import List, Callable, Dict
 from fastapi import HTTPException
 from finsearch.retrieval.model.colbert import ColBERTRetriever
-from finsearch.retrieval.config import ColBERTConfig
+from finsearch.retrieval.model.bm25 import BM25Retriever, BM25RetrieverOpenAI, BM25RetrieverTFIDF
+from finsearch.retrieval.config import ColBERTConfig, BM25Config
 from finsearch.schema import Document
-from finsearch.util import get_article_mapper, load_document
+from finsearch.util import get_article_mapper, load_document, get_docno_mapper
 
 
 class RetrievalService:
-    def __init__(self, colbert_config: ColBERTConfig):
-        document_df = load_document()
+    def __init__(self, colbert_config: ColBERTConfig, bm25_config: BM25Config):
+        import pandas as pd
+        # document_df = load_document()
+        document_df = pd.read_parquet("experiment/data/document.parquet")
         self.article_to_title = get_article_mapper(document_df)
         self.collection = document_df["Article"].tolist()
         self.colbert_searcher = ColBERTRetriever(config=colbert_config, collection=self.collection)
         
+        self.docno_to_articles = get_docno_mapper(document_df)
+        self.bm25_collection = document_df["docno"].tolist()
+        self.bm25_searcher = BM25Retriever(config=bm25_config, collection=self.bm25_collection)
+        self.bm25_openai_searcher = BM25RetrieverOpenAI(base=self.bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
+        self.bm25_tfidf_searcher = BM25RetrieverTFIDF(base=self.bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
+        
         self.retriever_methods: Dict[str, Callable[[str, int], List[str]]] = {
             "ColBERT": self.colbert_searcher.retrieve,
-            "BM25": self._bm25_retriever,  
-            "BM25 + Davinci OpenAI": self._bm25_openai_retriever,  
+            "BM25": self.bm25_searcher.retrieve,  
+            "BM25 with OpenAI": self.bm25_openai_searcher.retrieve,  
+            "BM25 with TFIDF": self.bm25_tfidf_searcher.retrieve,  
         }
 
     def get_features(self) -> List[str]:
@@ -27,12 +37,34 @@ class RetrievalService:
         if not retriever:
             raise HTTPException(status_code=400, detail=f"Invalid retrieval method: {method}")
         
-        passage_list = await retriever(query, k)
-        return [
-            Document(title=self.article_to_title[doc]["title"], 
-                         desc=doc, 
-                         doc_id=self.article_to_title[doc]["docno"]) for doc in passage_list
-        ]
+        if method == "ColBERT":
+            passage_list = await retriever(query, k)
+            return [
+                Document(title=self.article_to_title[doc]["title"], 
+                             desc=doc, 
+                             doc_id=self.article_to_title[doc]["docno"]) for doc in passage_list
+            ]
+        elif method == "BM25":
+            docno_list = await retriever(query, k)
+            return [
+                Document(title=self.docno_to_articles[docno]["title"], 
+                             desc=self.docno_to_articles[docno]["desc"], 
+                             doc_id=docno) for docno in docno_list
+            ]
+        elif method == "BM25 with OpenAI":
+            docno_list = await retriever(query, k)
+            return [
+                Document(title=self.docno_to_articles[docno]["title"], 
+                             desc=self.docno_to_articles[docno]["desc"], 
+                             doc_id=docno) for docno in docno_list
+            ]
+        elif method == "BM25 with TFIDF":
+            docno_list = await retriever(query, k)
+            return [
+                Document(title=self.docno_to_articles[docno]["title"], 
+                             desc=self.docno_to_articles[docno]["desc"], 
+                             doc_id=docno) for docno in docno_list
+            ]
 
     async def _bm25_retriever(self, query: str, k: int) -> List[str]:
         raise NotImplementedError("BM25 retriever not implemented yet.")
