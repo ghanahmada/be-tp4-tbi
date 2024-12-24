@@ -10,11 +10,11 @@ class ColBERTConfig:
 
 @dataclass
 class BM25Config:
-    output_dir: str = r"app\index\bm25_index"
-    data_dir: str = r'app\index\arxiv_collections'
-    embed_openai_path: str = "app/index/document_embedded.json"
-    tfidf_model: str = "app/finsearch/retrieval/model/constant/model_tfidf.json"
-    openai_model: str = "app/finsearch/retrieval/model/constant/model_openai.json"
+    output_dir: str = r"\app\index\bm25_index"
+    data_dir: str = r'\app\index\arxiv_collections'
+    embed_openai_path: str = "/app/index/document_embedded.json"
+    tfidf_model: str = "/app/finsearch/retrieval/model/constant/model_tfidf.json"
+    openai_model: str = "/app/finsearch/retrieval/model/constant/model_openai.json"
 
     arxiv_collections_folder: str = "arxiv_collections.zip"
     index_folder: str = "bm25_index.zip"
