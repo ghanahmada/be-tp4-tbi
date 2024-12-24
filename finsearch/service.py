@@ -9,15 +9,13 @@ from finsearch.util import get_article_mapper, load_document, get_docno_mapper
 
 class RetrievalService:
     def __init__(self, colbert_config: ColBERTConfig, bm25_config: BM25Config):
-        import pandas as pd
-        # document_df = load_document()
-        document_df = pd.read_parquet("experiment/data/document.parquet")
+        document_df = load_document()
         self.article_to_title = get_article_mapper(document_df)
-        self.collection = document_df["Article"].tolist()
-        self.colbert_searcher = ColBERTRetriever(config=colbert_config, collection=self.collection)
-        
         self.docno_to_articles = get_docno_mapper(document_df)
+        self.collection = document_df["Article"].tolist()
         self.bm25_collection = document_df["docno"].tolist()
+
+        self.colbert_searcher = ColBERTRetriever(config=colbert_config, collection=self.collection)
         self.bm25_searcher = BM25Retriever(config=bm25_config, collection=self.bm25_collection)
         self.bm25_openai_searcher = BM25RetrieverOpenAI(base=self.bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
         self.bm25_tfidf_searcher = BM25RetrieverTFIDF(base=self.bm25_searcher, config=bm25_config, mapper=self.docno_to_articles)
@@ -65,6 +63,8 @@ class RetrievalService:
                              desc=self.docno_to_articles[docno]["desc"], 
                              doc_id=docno) for docno in docno_list
             ]
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid retrieval method: {method}")
 
     async def _bm25_retriever(self, query: str, k: int) -> List[str]:
         raise NotImplementedError("BM25 retriever not implemented yet.")
