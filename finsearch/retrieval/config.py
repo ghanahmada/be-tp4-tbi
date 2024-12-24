@@ -11,7 +11,7 @@ class ColBERTConfig:
 @dataclass
 class BM25Config:
     experiment_path: str = "/app/index/experiments/bm25"
-    index_name: str = "ir"
-    bsbi_name: str = "bsbi.py" 
-    index_url: str = "https://drive.google.com/drive/folders/1Kv1uvEI508BaIOdhSEwikqJ5ubPkd-DY"
-    folder_name: str = "experiments"
+    arxiv_collections_url: str = "https://drive.google.com/uc?&id=18o8MduiMdkBOpa--6Nere7uGQNxJohaT"
+    arxiv_collections_folder: str = "arxiv_collections"
+    index_url: str = "https://drive.google.com/uc?&id=1WHVMtvlLvPL9bGMCq6l-XxGjFA6Zzzyp"
+    index_folder: str = "index"
